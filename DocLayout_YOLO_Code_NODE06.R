@@ -4,6 +4,8 @@ pacman::p_load(
   pdftools
 )
 
+# My have to set this path, I only have to do it on 1 machine, not others
+# COMMENT OUT IF NEEDEED
 Sys.setenv(TESSDATA_PREFIX = "/usr/share/tesseract-ocr/5/tessdata")
 
 setwd("/home/weackerm/Desktop/PDF_Extractor")
