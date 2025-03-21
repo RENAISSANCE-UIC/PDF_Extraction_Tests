@@ -4,8 +4,6 @@ pacman::p_load(
   pdftools
 )
 
-library(pdftools)
-
 Sys.setenv(TESSDATA_PREFIX = "/usr/share/tesseract-ocr/5/tessdata")
 
 setwd("/home/weackerm/Desktop/PDF_Extractor")
