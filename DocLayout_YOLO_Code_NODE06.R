@@ -19,6 +19,8 @@ pacman::p_load(
   ellmer
 )
 
+# I recommend installing Python requirements in a conda env to avoid 
+# compatibility turmoil
 use_condaenv("PDF_xtract")
 
 cv2 <- import("cv2")
