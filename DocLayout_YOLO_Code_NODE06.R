@@ -176,21 +176,3 @@ glue::glue(full_ms_text[2]) # Glue sets it in human readable format
 #        adist$location + nchar(df_container[[1]]$text[1]))
 
 
-
-
-
-
-
-glue::glue(paste(title, abstract, combined_text, sep = " "))
-
-prompt <- "You are a research assistant. 
-            Please summarize the provided text.
-            Please respond in English only."
-
-system_prompt <- 
-  str_replace_all(prompt, "\\n\\s*", " ") %>% paste(., collapse = "")
-
-chat_gemma <- 
-  chat_ollama(system_prompt = system_prompt, model = "gemma3:27b")
-
-chat_gemma$chat(glue::glue(paste(title, abstract, combined_text, sep = " ")))
