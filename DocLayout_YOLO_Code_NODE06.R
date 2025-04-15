@@ -9,7 +9,7 @@ Sys.setenv(TESSDATA_PREFIX = "/usr/share/tesseract-ocr/5/tessdata")
 setwd("/home/weackerm/Desktop/PDF_Extractor/pdfs_papers/Shapes_Papers_Batch1")
 files <- list.files(pattern = ".pdf$")
 
-pdf_file <- "25467683.pdf" # Example PDF
+#pdf_file <- "25467683.pdf" # Example PDF
 pdf_file <- files[6]
 
 pdf_images <- pdf_convert(pdf_file, dpi = 300)
@@ -256,7 +256,8 @@ full_ms_text <- pdf_text(pdf_file)
 glue::glue(full_ms_text[1]) # Glue sets it in human readable format
 
 # Summarize extracted text
-Sys.setenv(ANTHROPIC_API_KEY = '<KEY>')
+Sys.setenv(ANTHROPIC_API_KEY = '<placeholder>')
+
 
 # System prompt for LLM
 prompt <- "I am providing you with a Pubmed article. 
