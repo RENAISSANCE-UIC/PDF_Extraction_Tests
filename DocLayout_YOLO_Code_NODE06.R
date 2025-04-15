@@ -1,20 +1,7 @@
 # PDF to image
 pacman::p_load(
   magick,
-  pdftools
-)
-
-Sys.setenv(TESSDATA_PREFIX = "/usr/share/tesseract-ocr/5/tessdata")
-
-setwd("/home/weackerm/Desktop/PDF_Extractor/pdfs_papers/Shapes_Papers_Batch1")
-files <- list.files(pattern = ".pdf$")
-
-#pdf_file <- "25467683.pdf" # Example PDF
-pdf_file <- files[6]
-
-pdf_images <- pdf_convert(pdf_file, dpi = 300)
-
-pacman::p_load(
+  pdftools,
   tidyverse,
   reticulate,
   ellmer
@@ -22,17 +9,19 @@ pacman::p_load(
 
 use_condaenv("PDF_xtract")
 
+Sys.setenv(TESSDATA_PREFIX = "/usr/share/tesseract-ocr/5/tessdata")
+
+setwd("/home/weackerm/Desktop/PDF_Extractor/pdfs_papers/Shapes_Papers_Batch1")
+files <- list.files(pattern = ".pdf$")
+
+pdf_file <- "25467683.pdf" # Example PDF
+#pdf_file <- files[6]
+
+pdf_images <- pdf_convert(pdf_file, dpi = 300)
+
 cv2 <- import("cv2")
 dlyolo <- import("doclayout_yolo")
 YOLOv10 <- dlyolo$YOLOv10
-
-# cv2_version <- cv2$`__version__`
-# print(cv2_version)
-# 
-# dlyolo$`__version__`
-# 
-# tess <- import("pytesseract")
-# tess$`__version__`
 
 model <- 
   YOLOv10("/home/weackerm/Desktop/PDF_Extractor/doclayout_yolo_docstructbench_imgsz1024.pt")
@@ -162,11 +151,6 @@ abstract <-
         sep = "")
 
 }
-# complete_df  %>% filter(page == 1) %>% 
-#   arrange(y) %>% filter(x > 1180)  %>% 
-#   slice(3:4) %>% 
-#   select(text) %>% unlist() %>% unname() %>% 
-#   paste(., collapse = "") -> combined_text_p1
 
 # Pull Intro column 2
 complete_df  %>% filter(page == 1) %>% 
@@ -183,15 +167,12 @@ combined_text_p1 <-
         paste(col2.1, collapse = ""),
         sep = "")
 
-# Pull page 2 
-#p_num =2
 
 pull_page_single_column <- function(complete_df, page_num){ 
   complete_df %>% filter(page == page_num) %>% 
     arrange(y) %>% select(text) %>% unlist() %>% unname() -> text
   return(text)
 }
-
 
 pull_page_double_column <- function(complete_df, p_num){
   complete_df  %>% filter(page == p_num) %>% 
@@ -248,7 +229,6 @@ text$page9 <- combined_text_pF
 name2 <- glue::glue("{pdf_file}_Abstracted.RData")
 
 save(text, file = name2)
-
 
 # Note that pdftools can extract the data directly but it contains 
 # additional information
