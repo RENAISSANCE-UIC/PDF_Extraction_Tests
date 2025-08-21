@@ -680,171 +680,85 @@ Respond in JSON format:
                                           extract_abstract_universal = function(raw_df, structure_analysis, model) { 
                                             message("=== Universal Abstract Extraction DEBUG ===")
                                             
-                                            # Get page 1 content with proper sorting first
+                                            # CRITICAL: Always create text_clean early and handle missing columns safely
                                             page1_content <- raw_df %>%
                                               filter(page == 1) %>%
                                               mutate(
-                                                x_center = x + w/2,
-                                                y_center = y + h/2,
-                                                area = w * h,
-                                                text_clean = str_replace_all(text, "\\s+", " ") %>% str_trim()
+                                                x_center = if("x" %in% names(raw_df)) x + w/2 else 500,
+                                                y_center = if("y" %in% names(raw_df)) y + h/2 else 500,
+                                                area = if(all(c("w", "h") %in% names(raw_df))) w * h else 1000,
+                                                text_clean = if("text" %in% names(raw_df)) str_replace_all(text, "\\s+", " ") %>% str_trim() else ""
                                               ) %>%
                                               filter(!is.na(text_clean), nchar(text_clean) > 0)
                                             
-                                            # Detect format type
-                                            is_nature_format <- any(str_detect(tolower(page1_content$text), "nature.*nanotechnology|nature.*communications"))
-                                            is_jac_format <- any(str_detect(tolower(page1_content$text), "journal.*antimicrobial.*chemotherapy"))
-                                            is_jsm_format <- any(str_detect(tolower(page1_content$text), "jsm nanotechnology|scimed.*central"))
+                                            # Early exit if no content
+                                            if (nrow(page1_content) == 0) {
+                                              message("No valid page 1 content found")
+                                              return("Abstract not found")
+                                            }
+                                            
+                                            # Safe format detection
+                                            text_for_detection <- page1_content$text_clean %>% paste(collapse = " ") %>% tolower()
+                                            
+                                            is_nature_format <- str_detect(text_for_detection, "nature.*nanotechnology|nature.*communications")
+                                            is_jac_format <- str_detect(text_for_detection, "journal.*antimicrobial.*chemotherapy")
+                                            is_jsm_format <- str_detect(text_for_detection, "jsm nanotechnology|scimed.*central")
                                             
                                             message(glue("Format detection: Nature={is_nature_format}, JAC={is_jac_format}, JSM={is_jsm_format}"))
                                             
-                                            # NATURE FORMAT ABSTRACT EXTRACTION
+                                            # NATURE FORMAT
                                             if (is_nature_format) {
                                               message("Using Nature format abstract extraction")
                                               
-                                              # Look for the boxed abstract - large text block in upper portion
                                               boxed_abstract_candidates <- page1_content %>%
                                                 filter(
-                                                  y >= 300 & y < 900,  # Expected Y range for Nature abstract box
-                                                  nchar(text_clean) > 200,  # Substantial text
-                                                  area > 30000,  # Large text block
+                                                  y >= 300 & y < 900,
+                                                  nchar(text_clean) > 200,
+                                                  area > 30000,
                                                   str_detect(text_clean, "Silver nanoparticles have already been successfully applied|antimicrobial technologies|biomedical.*products")
                                                 ) %>%
                                                 arrange(y)
                                               
-                                              message(glue("Found {nrow(boxed_abstract_candidates)} boxed abstract candidates"))
-                                              
                                               if (nrow(boxed_abstract_candidates) > 0) {
+                                                message("Nature abstract candidates found:")
+                                                # SAFE: Use mutate to create preview column
                                                 boxed_abstract_candidates %>%
                                                   mutate(preview = str_trunc(text_clean, 100)) %>%
                                                   select(y, area, preview) %>%
                                                   print()
                                                 
-                                                abstract_text <- boxed_abstract_candidates %>%
-                                                  slice(1) %>%
-                                                  pull(text_clean)
-                                                
-                                                message(glue("Nature boxed abstract found: {nchar(abstract_text)} chars"))
-                                                return(abstract_text)
-                                              }
-                                              
-                                              # Fallback for Nature: large content blocks
-                                              nature_fallback <- page1_content %>%
-                                                filter(
-                                                  nchar(text_clean) > 300,
-                                                  str_detect(text_clean, "silver.*nanoparticles.*bacteria|antimicrobial.*agent|resistance.*antibiotics")
-                                                ) %>%
-                                                arrange(desc(nchar(text_clean)))
-                                              
-                                              if (nrow(nature_fallback) > 0) {
-                                                abstract_text <- nature_fallback %>% slice(1) %>% pull(text_clean)
-                                                message("Using Nature fallback abstract")
+                                                abstract_text <- boxed_abstract_candidates %>% slice(1) %>% pull(text_clean)
+                                                message(glue("Nature abstract found: {nchar(abstract_text)} chars"))
                                                 return(abstract_text)
                                               }
                                             }
                                             
-                                            # JAC FORMAT STRUCTURED ABSTRACT EXTRACTION  
-                                            if (is_jac_format) {
-                                              message("Using JAC structured abstract extraction")
-                                              
-                                              # Apply proper reading order for JAC format
-                                              layout_info <- detect_page_layout_universal(page1_content)
-                                              
-                                              if (layout_info$columns == 2) {
-                                                page1_sorted <- page1_content %>%
-                                                  mutate(column = ifelse(x_center < layout_info$boundary, 1, 2)) %>%
-                                                  arrange(column, y, x) %>%
-                                                  select(-x_center, -y_center, -area, -column)
-                                              } else {
-                                                page1_sorted <- page1_content %>%
-                                                  arrange(y, x) %>%
-                                                  select(-x_center, -y_center, -area)
-                                              }
-                                              
-                                              # Look for structured abstract components
-                                              structured_components <- page1_sorted %>%
-                                                mutate(
-                                                  is_objectives = str_detect(tolower(text_clean), "^objectives?:"),
-                                                  is_methods = str_detect(tolower(text_clean), "^methods?:"),
-                                                  is_results = str_detect(tolower(text_clean), "^results?:"),
-                                                  is_conclusions = str_detect(tolower(text_clean), "^conclusions?:"),
-                                                  is_abstract_part = is_objectives | is_methods | is_results | is_conclusions
-                                                ) %>%
-                                                filter(is_abstract_part) %>%
-                                                arrange(y, x)
-                                              
-                                              message(glue("Found {nrow(structured_components)} structured abstract components"))
-                                              
-                                              if (nrow(structured_components) > 0) {
-                                                structured_components %>%
-                                                  mutate(
-                                                    preview = str_trunc(text_clean, 80),
-                                                    component_type = case_when(
-                                                      is_objectives ~ "Objectives",
-                                                      is_methods ~ "Methods", 
-                                                      is_results ~ "Results",
-                                                      is_conclusions ~ "Conclusions",
-                                                      TRUE ~ "Unknown"
-                                                    )
-                                                  ) %>%
-                                                  select(component_type, preview) %>%
-                                                  print()
-                                                
-                                                # Combine all structured parts
-                                                abstract_text <- structured_components %>%
-                                                  pull(text_clean) %>%
-                                                  paste(collapse = " ")
-                                                
-                                                message(glue("JAC structured abstract assembled: {nchar(abstract_text)} chars"))
-                                                return(abstract_text)
-                                              }
-                                              
-                                              # JAC fallback: look for abstract-like content
-                                              jac_fallback <- page1_sorted %>%
-                                                filter(
-                                                  nchar(text_clean) > 200,
-                                                  y > 800 & y < 1800,  # Abstract region
-                                                  str_detect(text_clean, "Escherichia coli.*resistance|endogenous.*exogenous|silver.*bacteria")
-                                                ) %>%
-                                                arrange(desc(nchar(text_clean)))
-                                              
-                                              if (nrow(jac_fallback) > 0) {
-                                                abstract_text <- jac_fallback %>% slice(1) %>% pull(text_clean)
-                                                message("Using JAC fallback abstract")
-                                                return(abstract_text)
-                                              }
-                                            }
-                                            
+                                            # JSM FORMAT  
                                             if (is_jsm_format) {
                                               message("Using JSM format abstract extraction")
                                               
-                                              # Look for the actual abstract content, not affiliations
                                               jsm_abstract_candidates <- page1_content %>%
                                                 filter(
-                                                  # Look for the specific abstract text
                                                   str_detect(text_clean, "Escherichia coli can rapidly evolve resistance.*AgNP|experimental evolution.*demonstrate.*selection") |
-                                                    # Or substantial text blocks that look like abstracts
                                                     (y >= 1000 & y < 1700 & nchar(text_clean) > 200 & 
                                                        !str_detect(text_clean, "Brentwood.*Biomedical|Department.*Nano|University.*USA"))
                                                 ) %>%
                                                 arrange(y)
                                               
-                                              message(glue("Found {nrow(jsm_abstract_candidates)} JSM abstract candidates"))
-                                              
                                               if (nrow(jsm_abstract_candidates) > 0) {
-                                                # Debug print
+                                                message("JSM abstract candidates found:")
+                                                # SAFE: Create preview properly
                                                 jsm_abstract_candidates %>%
                                                   mutate(preview = str_trunc(text_clean, 100)) %>%
                                                   select(y, preview) %>%
                                                   print()
                                                 
-                                                # Take the one that actually contains the abstract content
+                                                # Take the one with abstract content
                                                 abstract_text <- jsm_abstract_candidates %>%
                                                   filter(str_detect(text_clean, "Escherichia coli can rapidly evolve")) %>%
                                                   slice(1) %>%
                                                   pull(text_clean)
                                                 
-                                                # If that fails, take the longest candidate that's not affiliations
                                                 if (length(abstract_text) == 0 || nchar(abstract_text) == 0) {
                                                   abstract_text <- jsm_abstract_candidates %>%
                                                     filter(!str_detect(text_clean, "Department|University|Institute")) %>%
@@ -860,14 +774,50 @@ Respond in JSON format:
                                               }
                                             }
                                             
-                                            # GENERIC FORMAT ABSTRACT EXTRACTION
+                                            # JAC FORMAT (Structured Abstract)
+                                            if (is_jac_format) {
+                                              message("Using JAC structured abstract extraction")
+                                              
+                                              # Apply basic sorting for JAC
+                                              page1_sorted <- page1_content %>% arrange(y, x)
+                                              
+                                              structured_components <- page1_sorted %>%
+                                                filter(
+                                                  str_detect(tolower(text_clean), "^objectives?:|^methods?:|^results?:|^conclusions?:")
+                                                ) %>%
+                                                arrange(y, x)
+                                              
+                                              if (nrow(structured_components) > 0) {
+                                                message("JAC structured components found:")
+                                                # SAFE: Create proper preview
+                                                structured_components %>%
+                                                  mutate(
+                                                    preview = str_trunc(text_clean, 80),
+                                                    component_type = case_when(
+                                                      str_detect(tolower(text_clean), "^objectives?:") ~ "Objectives",
+                                                      str_detect(tolower(text_clean), "^methods?:") ~ "Methods", 
+                                                      str_detect(tolower(text_clean), "^results?:") ~ "Results",
+                                                      str_detect(tolower(text_clean), "^conclusions?:") ~ "Conclusions",
+                                                      TRUE ~ "Unknown"
+                                                    )
+                                                  ) %>%
+                                                  select(component_type, preview) %>%
+                                                  print()
+                                                
+                                                abstract_text <- structured_components %>%
+                                                  pull(text_clean) %>%
+                                                  paste(collapse = " ")
+                                                
+                                                message(glue("JAC structured abstract assembled: {nchar(abstract_text)} chars"))
+                                                return(abstract_text)
+                                              }
+                                            }
+                                            
+                                            # GENERIC FORMAT
                                             message("Using generic abstract extraction")
+                                            page1_sorted <- page1_content %>% arrange(y, x)
                                             
-                                            # Apply basic reading order
-                                            page1_sorted <- page1_content %>%
-                                              arrange(y, x)
-                                            
-                                            # Look for obvious abstract markers first
+                                            # Look for explicit abstract markers
                                             explicit_abstracts <- page1_sorted %>%
                                               filter(str_detect(tolower(text_clean), "^abstract\\s*:?|^summary\\s*:?")) %>%
                                               arrange(y)
@@ -882,7 +832,7 @@ Respond in JSON format:
                                               return(abstract_text)
                                             }
                                             
-                                            # Look for substantial paragraphs that could be abstracts
+                                            # Look for substantial paragraphs
                                             generic_candidates <- page1_sorted %>%
                                               filter(
                                                 element_type %in% c("plain text") | is.na(element_type),
@@ -893,18 +843,18 @@ Respond in JSON format:
                                               arrange(desc(nchar(text_clean))) %>%
                                               slice(1:5)
                                             
-                                            message(glue("Found {nrow(generic_candidates)} generic abstract candidates"))
-                                            
                                             if (nrow(generic_candidates) > 0) {
+                                              message("Generic abstract candidates found:")
+                                              # SAFE: Create preview properly  
                                               generic_candidates %>%
-                                                mutate(preview = str_trunc(text_clean, 100)) %>%
-                                                select(nchar = nchar(text_clean), preview) %>%
+                                                mutate(
+                                                  preview = str_trunc(text_clean, 100),
+                                                  text_length = nchar(text_clean)  # Create length column safely
+                                                ) %>%
+                                                select(text_length, preview) %>%
                                                 print()
                                               
-                                              abstract_text <- generic_candidates %>%
-                                                slice(1) %>%
-                                                pull(text_clean)
-                                              
+                                              abstract_text <- generic_candidates %>% slice(1) %>% pull(text_clean)
                                               message("Using generic abstract detection")
                                               return(abstract_text)
                                             }
